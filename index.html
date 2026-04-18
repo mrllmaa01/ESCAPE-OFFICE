@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Escape Office: Fixed</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+        canvas { image-rendering: pixelated; }
+        #game-ui {
+            position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 20, 0, 0.9); color: #33ff33; padding: 15px 25px;
+            border: 2px solid #33ff33; font-family: monospace; font-size: 20px;
+            display: none; z-index: 100; width: 70%; text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div id="game-ui"></div>
+<script>
+const TILE_SIZE = 32;
+const SCALE = 2.5;
+const W_TILE = TILE_SIZE * SCALE;
+
+const MAP_DATA = [
+    [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1, 1, 1, 1, 1, 1, 1, 1,-1, 2, 2, 2, 2, 2, 2, 2,-1, 3, 3, 3, 3, 3, 3, 3,-1],
+    [-1, 1, 1, 1, 1, 1, 1, 1,-1, 2, 2, 2, 2, 2, 2, 2,-1, 3, 3, 3, 3, 3, 3, 3,-1],
+    [-1, 1, 1, 1, 1, 1, 1, 1,-1, 2, 2, 2, 2, 2, 2, 2,-1, 3, 3, 3, 3, 3, 3, 3,-1],
+    [-1, 1, 1, 1, 1, 1, 1, 1, 0, 2, 2, 2, 2, 2, 2, 2, 0, 3, 3, 3, 3, 3, 3, 3,-1], 
+    [-1, 1, 1, 1, 1, 1, 1, 1,-1, 2, 2, 2, 2, 2, 2, 2,-1, 3, 3, 3, 3, 3, 3, 3,-1],
+    [-1, 1, 1, 1, 1, 1, 1, 1,-1, 2, 2, 2, 2, 2, 2, 2,-1, 3, 3, 3, 3, 3, 3, 3,-1],
+    [-1, 1, 1, 1, 1, 1, 1, 1,-1, 2, 2, 2, 2, 2, 2, 2,-1, 3, 3, 3, 3, 3, 3, 3,-1],
+    [-1,-1,-1,-1, 0,-1,-1,-1,-1,-1,-1, 0,-1,-1,-1,-1,-1,-1,-1, 0,-1,-1,-1,-1,-1], 
+    [-1, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,-1],
+    [-1, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,-1],
+    [-1, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,-1], 
+    [-1,-1,-1,-1, 0,-1,-1,-1,-1,-1,-1, 0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1], 
+    [-1, 4, 4, 4, 4, 4, 4, 4,-1, 5, 5, 5, 5, 5, 5, 5,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1, 4, 4, 4, 4, 4, 4, 4,-1, 5, 5, 5, 5, 5, 5, 5,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1, 4, 4, 4, 4, 4, 4, 4,-1, 5, 5, 5, 5, 5, 5, 5,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1, 4, 4, 4, 4, 4, 4, 4, 0, 5, 5, 5, 5, 5, 5, 5, -1,-1,-1,-1,-1,-1,-1,-1,-1], 
+    [-1, 4, 4, 4, 4, 4, 4, 4,-1, 5, 5, 5, 5, 5, 5, 5,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1, 4, 4, 4, 4, 4, 4, 4,-1, 5, 5, 5, 5, 5, 5, 5,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1, 4, 4, 4, 4, 4, 4, 4,-1, 5, 5, 5, 5, 5, 5, 5,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1],
+    [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1]
+];
+
+class MenuScene extends Phaser.Scene {
+    constructor() { super('MenuScene'); }
+
+    preload() {
+        this.load.audio('menu_music', 'assets/music/menu.mp3');
+    }
+
+    create() {
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2;
+
+        this.uiElement = document.getElementById('game-ui');
+        this.uiElement.style.display = 'none';
+        this.uiElement.innerHTML = '';
+
+        this.menuMusic = this.sound.add('menu_music', { loop: true, volume: 0.5 });
+        this.menuMusic.play();
+
+        this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x000000).setOrigin(0).setDepth(0);
+
+        for (let i = 0; i < 100; i++) {
+            const star = this.add.circle(
+                Phaser.Math.Between(0, this.scale.width),
+                Phaser.Math.Between(0, this.scale.height),
+                1, 0x33ff33, Phaser.Math.FloatBetween(0.2, 0.8)
+            );
+            this.tweens.add({
+                targets: star,
+                alpha: { from: star.alpha, to: 0 },
+                duration: Phaser.Math.Between(1000, 3000),
+                repeat: -1,
+                yoyo: true
+            });
+        }
+
+        const title = this.add.text(centerX, centerY - 180, 'ESCAPE OFFICE', {
+            fontSize: '72px', fill: '#33ff33', fontStyle: 'bold', fontFamily: 'monospace',
+            stroke: '#00aa00', strokeThickness: 4
+        }).setOrigin(0.5).setAlpha(0);
+
+        this.tweens.add({ targets: title, alpha: 1, duration: 1500, ease: 'Power2' });
+        this.tweens.add({ targets: title, scaleX: 1.03, scaleY: 1.03, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+        this.add.text(centerX, centerY - 100, 'Офисный побег', {
+            fontSize: '24px', fill: '#88ff88', fontFamily: 'monospace'
+        }).setOrigin(0.5);
+
+        const startBtn = this.add.container(centerX, centerY + 40);
+        const startBg = this.add.rectangle(0, 0, 280, 60, 0x33ff33, 0.9).setStrokeStyle(2, 0xffffff);
+        const startText = this.add.text(0, 0, '▶ СТАРТ', {
+            fontSize: '32px', fill: '#000000', fontStyle: 'bold', fontFamily: 'monospace'
+        }).setOrigin(0.5);
+        startBtn.add([startBg, startText]);
+        startBtn.setSize(280, 60);
+        startBtn.setInteractive({ useHandCursor: true });
+
+        startBtn.on('pointerover', () => {
+            startBg.setFillStyle(0x55ff55);
+            startBg.setScale(1.05);
+            startText.setScale(1.05);
+        });
+        startBtn.on('pointerout', () => {
+            startBg.setFillStyle(0x33ff33);
+            startBg.setScale(1);
+            startText.setScale(1);
+        });
+        startBtn.on('pointerdown', () => {
+            startBg.setFillStyle(0x228822);
+            this.cameras.main.flash(500, 0, 0, 0);
+            this.time.delayedCall(300, () => {
+                this.menuMusic.stop();
+                this.scene.start('IntroCutscene');
+            });
+        });
+
+        const exitBtn = this.add.container(centerX, centerY + 130);
+        const exitBg = this.add.rectangle(0, 0, 200, 50, 0x331111, 0.9).setStrokeStyle(1, 0xff3333);
+        const exitText = this.add.text(0, 0, '✖ ВЫХОД', {
+            fontSize: '24px', fill: '#ff8888', fontFamily: 'monospace'
+        }).setOrigin(0.5);
+        exitBtn.add([exitBg, exitText]);
+        exitBtn.setSize(200, 50);
+        exitBtn.setInteractive({ useHandCursor: true });
+
+        exitBtn.on('pointerover', () => {
+            exitBg.setFillStyle(0x552222);
+            exitText.setFill('#ffaaaa');
+        });
+        exitBtn.on('pointerout', () => {
+            exitBg.setFillStyle(0x331111);
+            exitText.setFill('#ff8888');
+        });
+        exitBtn.on('pointerdown', () => {
+            window.close();
+        });
+
+        const controlsText = this.add.text(centerX, this.scale.height - 50, '▲ ▼ ◀ ▶  —  движение   |   E  —  взаимодействие', {
+            fontSize: '16px', fill: '#55aa55', fontFamily: 'monospace'
+        }).setOrigin(0.5);
+
+        this.tweens.add({ targets: controlsText, alpha: { from: 0.3, to: 1 }, duration: 1500, yoyo: true, repeat: -1 });
+    }
+}
+
+class IntroCutscene extends Phaser.Scene {
+    constructor() { super('IntroCutscene'); }
+
+    preload() {
+        this.load.image('intro', 'assets/intro.png');
+        this.load.audio('cutscene_music', 'assets/music/cutscene.mp3');
+    }
+
+    create() {
+        const centerX = this.cameras.main.centerX;
+        const centerY = this.cameras.main.centerY;
+
+        this.cutsceneMusic = this.sound.add('cutscene_music', { loop: true, volume: 0.5 });
+        this.cutsceneMusic.play();
+
+        const bg = this.add.image(centerX, centerY, 'intro')
+            .setDisplaySize(this.scale.width, this.scale.height)
+            .setAlpha(0);
+        
+        this.tweens.add({ targets: bg, alpha: 1, duration: 1000, ease: 'Power2' });
+
+        const story = [
+            'Корпорация "Омега". Офис закрыт после "инцидента".',
+            'Вы просыпаетесь на холодном полу в пустой комнате.',
+            'Голова раскалывается. Вы ничего не помните.',
+            'Кто вы? Как сюда попали? Что здесь произошло?',
+            'Вокруг — разбросанные бумаги, погасшие экраны, тишина.',
+            'Вдруг оживает динамик:',
+            '"Внимание. Система безопасности активирована. Доступ запрещён."',
+            'Это ИИ "Цербер". Он заблокировал здание.',
+            'Найдите код отключения.'
+        ];
+
+        let currentLine = 0;
+        
+        const storyText = this.add.text(centerX, centerY + 10, '', {
+            fontSize: '28px',
+            fill: '#33ff33',
+            fontFamily: 'monospace',
+            backgroundColor: '#000000aa',
+            padding: { x: 40, y: 20 },
+            align: 'center',
+            fontWeight: 'bold'
+        }).setOrigin(0.5).setAlpha(0);
+
+        const showNextLine = () => {
+            if (currentLine < story.length) {
+                storyText.setText(story[currentLine]);
+                storyText.setAlpha(0);
+                this.tweens.add({
+                    targets: storyText,
+                    alpha: 1,
+                    duration: 500,
+                    onComplete: () => {
+                        this.time.delayedCall(2200, () => {
+                            this.tweens.add({
+                                targets: storyText,
+                                alpha: 0,
+                                duration: 500,
+                                onComplete: () => {
+                                    currentLine++;
+                                    showNextLine();
+                                }
+                            });
+                        });
+                    }
+                });
+            } else {
+                this.time.delayedCall(1000, () => {
+                    this.cameras.main.fadeOut(1000, 0, 0, 0);
+                    this.time.delayedCall(1100, () => {
+                        this.cutsceneMusic.stop();
+                        this.scene.start('MainScene');
+                    });
+                });
+            }
+        };
+
+        showNextLine();
+
+        this.input.keyboard.once('keydown-SPACE', () => {
+            this.cameras.main.fadeOut(500);
+            this.time.delayedCall(600, () => {
+                this.cutsceneMusic.stop();
+                this.scene.start('MainScene');
+            });
+        });
+    }
+}
+
+class EndingScene extends Phaser.Scene {
+    constructor() { super('EndingScene'); }
+
+    preload() {
+        this.load.image('ending_win', 'assets/ending_win.png');
+        this.load.image('ending_lose', 'assets/ending_lose.png');
+        this.load.audio('ending_win_music', 'assets/music/win.mp3');
+        this.load.audio('ending_lose_music', 'assets/music/lose.mp3');
+    }
+
+    create(data) {
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2;
+        const result = data.result;
+
+        if (result === 'win') {
+            this.endingMusic = this.sound.add('ending_win_music', { loop: false, volume: 0.6 });
+        } else {
+            this.endingMusic = this.sound.add('ending_lose_music', { loop: false, volume: 0.5 });
+        }
+        this.endingMusic.play();
+
+        let bgKey = (result === 'win') ? 'ending_win' : 'ending_lose';
+        const bg = this.add.image(centerX, centerY, bgKey).setScale(1.2);
+        bg.setAlpha(0);
+        this.tweens.add({ targets: bg, alpha: 1, duration: 1500, ease: 'Power2' });
+
+        let titleText = '';
+        let descText = '';
+        
+        if (result === 'win') {
+            titleText = '★ ВЫ СБЕЖАЛИ! ★';
+            descText = 'ИИ "Цербер" отключён. Здание разблокировано.\n\nВы выбрались и спасли улики против корпорации.\n\nПравда восторжествовала.';
+        } else {
+            titleText = '✖ ПРОВАЛ ✖';
+            descText = 'Время вышло. Система самоуничтожения активирована.\n\nВсе улики уничтожены. Корпорация "Омега" продолжит своё дело.\n\nПопробуйте снова.';
+        }
+
+        const title = this.add.text(centerX, centerY - 200, titleText, {
+            fontSize: '42px', fill: (result === 'win') ? '#33ff33' : '#ff3333',
+            fontStyle: 'bold', fontFamily: 'monospace', stroke: '#000000', strokeThickness: 4
+        }).setOrigin(0.5).setAlpha(0);
+
+        const description = this.add.text(centerX, centerY - 80, descText, {
+            fontSize: '20px', fill: '#ffffff', fontFamily: 'monospace',
+            align: 'center', backgroundColor: '#000000aa', padding: { x: 20, y: 15 }
+        }).setOrigin(0.5).setAlpha(0);
+
+        const restartBtn = this.add.container(centerX, centerY + 120);
+        const btnBg = this.add.rectangle(0, 0, 260, 55, 0x33ff33, 0.9).setStrokeStyle(2, 0xffffff);
+        const btnText = this.add.text(0, 0, '🔄 СЫГРАТЬ СНОВА', {
+            fontSize: '24px', fill: '#000000', fontStyle: 'bold', fontFamily: 'monospace'
+        }).setOrigin(0.5);
+        restartBtn.add([btnBg, btnText]);
+        restartBtn.setSize(260, 55);
+        restartBtn.setInteractive({ useHandCursor: true });
+
+        restartBtn.on('pointerover', () => {
+            btnBg.setFillStyle(0x55ff55);
+            btnBg.setScale(1.05);
+            btnText.setScale(1.05);
+        });
+        restartBtn.on('pointerout', () => {
+            btnBg.setFillStyle(0x33ff33);
+            btnBg.setScale(1);
+            btnText.setScale(1);
+        });
+        restartBtn.on('pointerdown', () => {
+            this.endingMusic.stop();
+            this.cameras.main.fadeOut(500, 0, 0, 0);
+            this.time.delayedCall(600, () => {
+                this.scene.start('IntroCutscene');
+            });
+        });
+
+        const exitBtn = this.add.container(centerX, centerY + 200);
+        const exitBg = this.add.rectangle(0, 0, 180, 45, 0x331111, 0.9).setStrokeStyle(1, 0xff3333);
+        const exitText = this.add.text(0, 0, '✖ ВЫЙТИ', {
+            fontSize: '20px', fill: '#ff8888', fontFamily: 'monospace'
+        }).setOrigin(0.5);
+        exitBtn.add([exitBg, exitText]);
+        exitBtn.setSize(180, 45);
+        exitBtn.setInteractive({ useHandCursor: true });
+
+        exitBtn.on('pointerdown', () => {
+            window.close();
+        });
+
+        this.time.delayedCall(800, () => {
+            this.tweens.add({ targets: title, alpha: 1, duration: 800, y: centerY - 220 });
+        });
+        this.time.delayedCall(1300, () => {
+            this.tweens.add({ targets: description, alpha: 1, duration: 800 });
+        });
+    }
+}
+
+class MainScene extends Phaser.Scene {
+    constructor() { super('MainScene'); }
+
+    preload() {
+        this.load.path = 'assets/';
+        this.load.audio('game_music', 'music/game.mp3');
+        this.load.audio('alarm_music', 'music/alarm.mp3');
+        this.load.spritesheet('player', 'player_sheet.png', {
+            frameWidth: 32,
+            frameHeight: 32
+        });
+
+        for (let i = 1; i <= 7; i++) {
+            this.load.image(`floor${i}`, `floor${i}.png`);
+        }
+
+        const assets = [
+            'void', 'door', 'table', 'long_table', 'chair', 'sofa', 
+            'plant', 'pc', 'poster', 'drawer', 'server_rack', 'lab_table_new', 
+            'capsule', 'circuit_board', 'reagent_bottle', 'crate', 'fuse_box', 
+            'battery', 'cooler', 'coffee','safe', 'bookshelf','flipchart','warehouse','toolbox','computer','wardrobe','cooler1',
+            'sofa1','heart_red','heart_grey','inv_slot','item_battery','item_crowbar'
+        ];
+
+        assets.forEach(asset => {
+            this.load.image(asset, `${asset}.png`);
+        });
+
+        this.load.on('loaderror', (file) => {
+            console.error('Не найден файл по пути: ' + file.src);
+        });
+    }
+
+    create() {
+        // ВНИЗ (кадры 0-3)
+        this.anims.create({
+            key: 'walk-down',
+            frames: this.anims.generateFrameNumbers('player', { start: 0, end: 3 }),
+            frameRate: 8,
+            repeat: -1
+        });
+
+        // ВЛЕВО (кадры 4-7)
+        this.anims.create({
+            key: 'walk-left',
+            frames: this.anims.generateFrameNumbers('player', { start: 4, end: 7 }),
+            frameRate: 8,
+            repeat: -1
+        });
+
+        // ВПРАВО (кадры 8-11)
+        this.anims.create({
+            key: 'walk-right',
+            frames: this.anims.generateFrameNumbers('player', { start: 8, end: 11 }),
+            frameRate: 8,
+            repeat: -1
+        });
+
+        // ВВЕРХ (кадры 12-15)
+        this.anims.create({
+            key: 'walk-up',
+            frames: this.anims.generateFrameNumbers('player', { start: 12, end: 15 }),
+            frameRate: 8,
+            repeat: -1
+        });
+
+        // СТОЙКА (берём первый кадр из каждого направления)
+        this.anims.create({
+            key: 'idle-down',
+            frames: [{ key: 'player', frame: 0 }],
+            frameRate: 1
+        });
+
+        this.anims.create({
+            key: 'idle-left',
+            frames: [{ key: 'player', frame: 4 }],
+            frameRate: 1
+        });
+
+        this.anims.create({
+            key: 'idle-right',
+            frames: [{ key: 'player', frame: 8 }],
+            frameRate: 1
+        });
+
+        this.anims.create({
+            key: 'idle-up',
+            frames: [{ key: 'player', frame: 12 }],
+            frameRate: 1
+        });
+
+        this.uiElement = document.getElementById('game-ui');
+        
+        this.gameMusic = this.sound.add('game_music', { loop: true, volume: 0.4 });
+        this.alarmMusic = this.sound.add('alarm_music', { loop: true, volume: 0.6 });
+        this.currentMusic = null;
+        
+        this.gameMusic.play();
+        this.currentMusic = this.gameMusic;
+        
+        this.gameState = { 
+            firstDoorOpened: false, 
+            hasLockpick: false,
+            foundNote: false,     
+            counterOpened: false, 
+            hasShelfKey: false,
+            hasMarker: false,
+            alarmActive: false,
+            timer: 30,
+            puzzlesSolved: 0,
+            hasKey: false,
+            solventReady: false, 
+            playerSpeed: 280,
+            hasBattery: false, 
+            serverPowerOn: false,
+            meetingCode: { p1: false, p2: false },
+            archiveUnlocked: false,
+            hasCrowbar: false,
+            hp: 3,
+            inventory: [null, null, null, null],
+            hearts: [],
+            invVisuals: []
+        };
+
+        for (let i = 0; i < 3; i++) {
+            let heart = this.add.image(275 + (i * 75), 165, 'heart_red')
+                .setScrollFactor(0)
+                .setDepth(20000)
+                .setScale(1.2);
+            heart.setFixedToCamera = true; 
+            this.gameState.hearts.push(heart);
+        }
+
+        const startX = this.scale.width / 2 - 90;
+        const invY = this.scale.height - 150; 
+
+        for (let i = 0; i < 4; i++) {
+            this.add.image(startX + (i * 60), invY, 'inv_slot')
+                .setScrollFactor(0)
+                .setDepth(10000)
+                .setScale(2) 
+                .setAlpha(0.8);
+        }
+
+        this.voidGroup = this.physics.add.staticGroup();
+        this.furnitureGroup = this.physics.add.staticGroup();
+        this.doorsGroup = this.physics.add.staticGroup();
+        this.interactables = [];
+
+        MAP_DATA.forEach((row, ty) => {
+            row.forEach((type, tx) => {
+                const x = tx * W_TILE + W_TILE/2;
+                const y = ty * W_TILE + W_TILE/2;
+                
+                if (type === -1) {
+                    let v = this.voidGroup.create(x, y, 'void');
+                    if (v) v.setDisplaySize(W_TILE, W_TILE).refreshBody();
+                } 
+                else if (type === 0) {
+                    this.add.image(x, y, 'floor7').setDisplaySize(W_TILE, W_TILE);
+                    let d = this.doorsGroup.create(x, y, 'door').setScale(SCALE).refreshBody();
+                    if (tx === 4 && ty === 9) {
+                        d.doorID = 'RECEPTION_EXIT';
+                    } else if (tx === 4 && ty === 13) {
+                        d.doorID = 'LAB_ENTRANCE';
+                    } else if (tx === 8 && ty === 17) {
+                        d.doorID = 'EXIT_LAB_DOOR';
+                    } else if (tx === 8 && ty === 5) {
+                        d.doorID = 'SERVER_ROOM';
+                    } else if (tx === 11 && ty === 9) {
+                        d.doorID = 'SERVER_EXIT';
+                    } else if (tx === 19 && ty === 9 || tx === 11 && ty === 13 || tx === 19 && ty === 13) {
+                        d.doorID = 'GENERIC_CORRIDOR_DOOR';
+                    } else {
+                        d.doorID = 'LOCKED_DOOR';
+                    }
+                } else {
+                    this.add.image(x, y, `floor${type}`).setDisplaySize(W_TILE, W_TILE);
+                }
+            });
+        });
+
+        this.addInteractableGrid(1, 2, 'plant', 'plant_desc');
+        this.addInteractableGrid(7, 2, 'plant', 'plant_desc');
+        let sofa = this.addFurnitureGrid(4, 2, 'sofa');
+        sofa.interactType = 'sofa'; this.interactables.push(sofa);
+        let t1 = this.addFurnitureGrid(2, 6, 'table');
+        t1.interactType = 'table_desc'; this.interactables.push(t1);
+        this.addInteractableGrid(2, 6, 'pc', 'pc');
+        let t2 = this.addFurnitureGrid(6, 6, 'table');
+        t2.interactType = 'table_desc'; this.interactables.push(t2);
+        this.addInteractableGrid(6, 6, 'poster', 'poster');
+
+        this.addFurnitureGrid(9.25, 1, 'server_rack').interactType = 'server_desc';
+        this.addFurnitureGrid(10.25, 1, 'server_rack').interactType = 'server_desc';
+        this.addFurnitureGrid(11.25, 1, 'server_rack').interactType = 'server_desc';
+        this.addFurnitureGrid(12.25, 1, 'server_rack').interactType = 'server_desc';
+        this.addFurnitureGrid(13.25, 1, 'server_rack').interactType = 'server_desc';
+        this.addFurnitureGrid(14.25, 1, 'server_rack').interactType = 'server_desc';
+      
+        let w1 = this.addFurnitureGrid(9.2, 7.75, 'wardrobe');
+        w1.interactType = 'wardrobe'; 
+        this.interactables.push(w1);
+        
+        let w2 = this.addFurnitureGrid(14.8, 7.75, 'wardrobe');
+        w2.interactType = 'wardrobe';
+        this.interactables.push(w2);
+        
+        let serverTerminal = this.addFurnitureGrid(12, 5, 'computer'); 
+        serverTerminal.interactType = 'server_main_terminal';
+        this.interactables.push(serverTerminal);
+
+        let shelf = this.addFurnitureGrid(22.75, 1, 'warehouse');
+        shelf.interactType = 'storage_shelf';
+        this.interactables.push(shelf);
+        
+        this.addInteractableGrid(17.25, 2, 'toolbox', 'crowbar_pickup');
+        this.addInteractableGrid(20, 1.25, 'fuse_box', 'fuse_box');
+        
+        const storageItems = [
+            {tx: 18, ty: 3, type: 'crate_number'},
+            {tx: 18, ty: 4, type: 'crate_empty'},
+            {tx: 19, ty: 3, type: 'crate_trap'},
+            {tx: 21, ty: 5, type: 'crate_empty'},
+            {tx: 22, ty: 3, type: 'crate_empty'},
+            {tx: 22, ty: 6, type: 'crate_empty'},
+            {tx: 22, ty: 7, type: 'crate_battery'},
+            {tx: 18, ty: 7, type: 'crate_empty'},
+            {tx: 20, ty: 5, type: 'crate_empty'}
+        ];
+
+        storageItems.forEach(item => {
+            let c = this.addFurnitureGrid(item.tx, item.ty, 'crate');
+            c.interactType = item.type;
+            this.interactables.push(c);
+        });
+
+        let drawer = this.addFurnitureGrid(1, 9.5, 'drawer');
+        drawer.interactType = 'drawer'; this.interactables.push(drawer);
+        this.addFurnitureGrid(5, 9.5, 'cooler1');
+        let cooler1 = this.addInteractableGrid(12, 9.5, 'cooler', 'water_cooler');
+        this.interactables.push(cooler1);
+        this.addFurnitureGrid(20, 9.5, 'cooler1');
+        this.addFurnitureGrid(21, 9.5, 'sofa1');
+        this.addFurnitureGrid(22.5, 9.5, 'sofa1');
+        this.addFurnitureGrid(6, 9.5, 'sofa1');
+        this.addFurnitureGrid(7.5, 9.5, 'sofa1');
+        this.addFurnitureGrid(9, 9.5, 'sofa1');
+        this.addFurnitureGrid(13, 9.5, 'sofa1');
+        this.addFurnitureGrid(14.5, 9.5, 'sofa1');
+        this.addFurnitureGrid(16, 9.5, 'sofa1');
+
+        this.addFurnitureGrid(1.25, 13.3, 'server_rack').interactType = 'server_desc';
+        this.addFurnitureGrid(2.25, 13.3, 'server_rack').interactType = 'server_desc';
+        let labTable = this.addFurnitureGrid(4, 17, 'lab_table_new');
+        labTable.interactType = 'lab_table'; this.interactables.push(labTable);
+        this.addInteractableGrid(7, 16, 'circuit_board', 'circuit_board');
+        let capsule = this.addFurnitureGrid(1.25, 19.25, 'capsule');
+        capsule.interactType = 'capsule'; this.interactables.push(capsule);
+        this.addReagentGrid(2.5, 19, 0xff0000, 'reagent_r'); 
+        this.addReagentGrid(6, 15, 0x00ff00, 'reagent_g'); 
+        this.addReagentGrid(6, 19, 0x0000ff, 'reagent_b');
+
+        this.addFurnitureGrid(12, 16, 'long_table');
+        let mTerm = this.addFurnitureGrid(12, 17.5, 'long_table');
+        mTerm.interactType = 'meeting_terminal';
+        this.interactables.push(mTerm);
+
+        let c1 = this.addInteractableGrid(12.2, 15.9, 'coffee', 'coffee_desc'); 
+        this.interactables.push(c1);
+        let c2 = this.addInteractableGrid(12.2, 16.2, 'coffee', 'coffee_desc');
+        this.interactables.push(c2);
+
+        this.addFurnitureGrid(11, 16, 'chair'); 
+        let chairCode = this.addFurnitureGrid(11, 17, 'chair');
+        chairCode.interactType = 'chair_code_1';
+        this.interactables.push(chairCode);
+        this.addFurnitureGrid(11, 18, 'chair');
+
+        let cooler = this.addInteractableGrid(12, 13.5, 'cooler', 'water_cooler');
+        this.interactables.push(cooler);
+
+        let bShelf = this.addFurnitureGrid(14.70, 14, 'bookshelf');
+        bShelf.interactType = 'shelf_desc';
+        this.interactables.push(bShelf);
+
+        let fChart = this.addFurnitureGrid(14.50, 19.25, 'flipchart');
+        fChart.interactType = 'flipchart_desc';
+        this.interactables.push(fChart);
+
+        let mSafe = this.addFurnitureGrid(9, 14, 'safe');
+        mSafe.interactType = 'safe_logic';
+        this.interactables.push(mSafe);
+
+        this.player = this.physics.add.sprite(2 * W_TILE, 4 * W_TILE, 'player').setScale(SCALE);
+        this.player.body.setSize(12, 8).setOffset(10, 24);
+        this.player.anims.play('idle-down');
+
+        this.physics.add.collider(this.player, this.voidGroup);
+        this.physics.add.collider(this.player, this.furnitureGroup);
+        this.physics.add.collider(this.player, this.doorsGroup, (p, d) => this.tryOpenDoor(d));
+
+        this.cameras.main.startFollow(this.player, true, 1, 1).setZoom(1.3);
+        this.cameras.main.setRoundPixels(true);
+
+        this.interactKeyHint = this.add.text(0, 0, '[E]', { fontSize: '18px', fill: '#0f0', backgroundColor: '#000' }).setOrigin(0.5).setVisible(false).setDepth(1000);
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.keyE = this.input.keyboard.addKey('E');
+        
+        const centerX = this.scale.width / 2;
+
+        this.timerText = this.add.text(centerX, 165, '05:00', {
+            fontSize: '32px', fill: '#ff0000', fontStyle: 'bold',
+            backgroundColor: '#000000aa', padding: { x: 10, y: 5 }, fontFamily: 'monospace' 
+        });
+
+        this.timerText.setOrigin(0.5, 0.5); 
+        this.timerText.setScrollFactor(0);  
+        this.timerText.setDepth(110000);    
+        this.timerText.setVisible(false);
+
+        this.alarmOverlay = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0xff0000)
+            .setOrigin(0)
+            .setScrollFactor(0)
+            .setDepth(99999)
+            .setAlpha(0);
+    }
+
+    addFurnitureGrid(tx, ty, key) {
+        const x = tx * W_TILE + W_TILE / 2;
+        const y = ty * W_TILE + W_TILE / 2;
+        let obj = this.furnitureGroup.create(x, y, key).setScale(SCALE).refreshBody();
+        obj.setDepth(obj.y / 100);
+        return obj;
+    }
+
+    addInteractableGrid(tx, ty, key, type) {
+        const x = tx * W_TILE + W_TILE / 2;
+        const y = ty * W_TILE + W_TILE / 2;
+        let spr = this.add.image(x, y, key).setScale(SCALE).setDepth((y/100) + 0.5);
+        spr.interactType = type;
+        this.interactables.push(spr);
+        return spr;
+    }
+
+    addReagentGrid(tx, ty, tint, type) {
+        const x = tx * W_TILE + W_TILE / 2;
+        const y = ty * W_TILE + W_TILE / 2;
+        let spr = this.add.image(x, y, 'reagent_bottle').setScale(SCALE).setDepth((y/100) + 0.5);
+        spr.setTint(tint);
+        spr.interactType = type;
+        this.interactables.push(spr);
+    }
+
+    tryOpenDoor(door) {
+        let canOpen = false;
+
+        if (door.doorID === 'RECEPTION_EXIT' && this.gameState.firstDoorOpened) canOpen = true;
+        else if (door.doorID === 'LAB_ENTRANCE' && this.gameState.hasKey) canOpen = true;
+        else if (door.doorID === 'SERVER_ROOM' && this.gameState.serverPowerOn) canOpen = true;
+        else if (door.doorID === 'EXIT_LAB_DOOR' && this.gameState.solventReady) canOpen = true;
+        
+        if (this.gameState.alarmActive || this.gameState.archiveUnlocked) {
+            this.showText("Система разблокирована!");
+            door.destroy();
+            return; 
+        }
+
+        if (canOpen) {
+            this.showText("Дверь открыта!");
+            door.destroy();
+        } else {
+            const hints = {
+                'RECEPTION_EXIT': "Нужен пароль от компьютера.",
+                'LOCKED_DOOR': "Дверь заблокирована терминалом Meeting Room.",
+                'SERVER_ROOM': "Нет питания."
+            };
+            this.showText(hints[door.doorID] || "Заперто.");
+        }
+    }
+
+    showText(msg) {
+        this.uiElement.innerHTML = `> ${msg}`;
+        this.uiElement.style.display = 'block';
+        this.uiElement.style.zIndex = '20000';
+
+        if (this.textTimer) this.textTimer.remove();
+        this.textTimer = this.time.delayedCall(3500, () => {
+            this.uiElement.style.display = 'none';
+            this.uiElement.innerHTML = '';
+        });
+    }
+
+    // ========== ДОБАВЛЕННАЯ ФУНКЦИЯ removeFromInventory ==========
+    removeFromInventory(itemKey) {
+        let slotIndex = this.gameState.inventory.findIndex(slot => slot === itemKey);
+        if (slotIndex !== -1) {
+            this.gameState.inventory[slotIndex] = null;
+            if (this.gameState.invVisuals[slotIndex]) {
+                this.gameState.invVisuals[slotIndex].destroy();
+                this.gameState.invVisuals[slotIndex] = null;
+            }
+        }
+    }
+    // ===============================================================
+
+    handleInteraction(obj) {
+        if (!obj) return;
+
+        const type = obj.interactType;
+
+        const DESCRIPTIONS = {
+            'plant_desc': "Искусственное растение. Даже в этом мертвом месте оно выглядит фальшиво.",
+            'table_desc': "Металлический стол. Поверхность исцарапана документами и временем.",
+            'server_desc': "Массив серверов. Гудение вентиляторов — единственный звук в этой тишине.",
+            'storage_shelf': "Стеллаж 'Warehouse-13'. Забит старыми запчастями и пылью.",
+            'wardrobe': "Металлический шкаф для складских помещений.",
+            'crate_empty': "Обычный деревянный ящик. Внутри только упаковочная стружка.",
+            'capsule': "Криогенная капсула. Внутри в тумане виден силуэт. Кажется, пульс еще есть.",
+            'circuit_board': "Сложная электронная панель. Отвечает за энергоснабжение нижних уровней.",
+            'poster': "Старый постер. Дата в углу — 2014. Год, когда всё остановилось.",
+            'fuse_box': "Главный распределитель. Внутри не хватает мощного аккумулятора.",
+            'coffee_desc': "Чашка остывшего кофе. На столе их ровно две.",
+            'chair_code_1': "На ножке стула глубоко выцарапана цифра '7'. Похоже на переменную 'x'.",
+            'water_cooler': "Вы нашли приклеенную к баку записку. На ней жирно написано: '9'."
+        };
+
+        if (type === 'server_desc') {
+            this.showText("На сервере приклеена записка: 'Ящик -> Стеллаж -> Кулер -> Счетчик'");
+            this.gameState.foundNote = true;
+        }
+        else if (type === 'crate_number') {
+            this.showText("На дне ящика нацарапано: 'Первая цифра — 5'");
+        }
+        else if (type === 'storage_shelf') {
+            this.showText("Табличка на стеллаже: 'Вторая цифра = Кол-во серверов в главной комнате'");
+        }
+        else if (type === 'water_cooler') {
+            this.showText("В баке плавает капсула. Внутри записка: '9'.");
+        }
+        else if (type === 'crowbar_pickup') {
+            if (!this.gameState.inventory.includes('item_crowbar')) {
+                this.showText("Вы взяли тяжелую монтировку.");
+                this.addToInventory('item_crowbar');
+                obj.destroy();
+            }
+        }
+        else if (type === 'fuse_box') {
+            const hasCrow = this.gameState.inventory.includes('item_crowbar');
+            const hasBat = this.gameState.inventory.includes('item_battery');
+            
+            if (hasCrow && hasBat) {
+                this.showText("Вы вставили батарею в щиток! Питание подано. Теперь серверный терминал работает.");
+                this.gameState.serverPowerOn = true;
+                this.removeFromInventory('item_battery');
+            }
+            else if (hasCrow && !this.gameState.counterOpened) {
+                this.showText("Вы вскрыли щиток монтировкой! На внутренней стенке выгравировано: 9");
+                this.gameState.counterOpened = true;
+            }
+            else if (!hasCrow) {
+                this.showText("Щиток заперт на прочный замок. Нужен рычаг, чтобы его вскрыть.");
+            }
+            else if (this.gameState.counterOpened && !hasBat) {
+                this.showText("Внутри щитка есть разъём для батареи. Нужна батарея.");
+            }
+        }
+        else if (type === 'meeting_terminal') {
+            let code = prompt("Введите четырехзначный код безопасности:");
+            if (code === "7329") {
+                this.showText("ДОСТУП РАЗРЕШЕН! СИСТЕМА ТРЕВОГИ АКТИВИРОВАНА.");
+                this.gameState.alarmActive = true;
+                if (this.currentMusic) this.currentMusic.stop();
+                this.alarmMusic.play();
+                this.currentMusic = this.alarmMusic;
+            } else {
+                this.showText("НЕВЕРНЫЙ КОД. ДОСТУП ЗАПРЕЩЕН.");
+            }
+        }
+        else if (type === 'crate_battery') {
+            if (!this.gameState.hasBattery) {
+                this.showText("Вы нашли БАТАРЕЮ!");
+                this.gameState.hasBattery = true;
+                this.addToInventory('item_battery');
+                obj.interactType = 'crate_empty';
+            }
+        } 
+        else if (type === 'sofa' && !this.gameState.hasLockpick) {
+            this.showText("Под подушкой дивана нашлась отмычка.");
+            this.gameState.hasLockpick = true;
+        }
+        else if (type === 'pc') {
+            if (prompt("Пароль терминала:") === "2014") {
+                this.showText("Сектор 1 разблокирован.");
+                this.gameState.firstDoorOpened = true;
+            }
+        }
+        else if (type === 'drawer') {
+            if (this.gameState.hasLockpick) {
+                this.showText("Вы вскрыли ящик. Получена Ключ-карта.");
+                this.gameState.hasKey = true;
+            } else this.showText("Заперто. Нужна отмычка.");
+        }
+        else if (type === 'shelf_desc') {
+            if (!this.gameState.hasShelfKey) {
+                this.showText("Среди пыльных книг вы нашли маленький ключ!");
+                this.gameState.hasShelfKey = true; 
+            } else {
+                this.showText("Просто скучные отчеты.");
+            }
+        }
+        else if (type === 'safe_logic') {
+            if (this.gameState.hasShelfKey) {
+                if (!this.gameState.hasMarker) {
+                    this.showText("Ключ подошел! Внутри лежал черный маркер.");
+                    this.gameState.hasMarker = true;
+                } else {
+                    this.showText("Сейф пуст.");
+                }
+            } else {
+                this.showText("Сейф заперт. Нужен ключ.");
+            }
+        }
+        else if (type === 'flipchart_desc') {
+            if (this.gameState.hasMarker) {
+                this.showText("Вы закрасили доску. Проявился код: x + стулья + чашки + записка");
+            } else {
+                this.showText("На доске ничего не видно. Нужно чем-то её закрасить.");
+            }
+        }
+        else if (type === 'server_main_terminal') {
+            if (!this.gameState.serverPowerOn) {
+                this.showText("Терминал мертв. Кажется, в щитке на складе не хватает питания.");
+            } else if (!this.gameState.archiveUnlocked) {
+                let pass = prompt("Система требует пароль администратора для разблокировки архивов:");
+                if (pass === "5639") {
+                    this.showText("ДОСТУП РАЗРЕШЕН! ВЫ СБЕЖАЛИ!");
+                    this.gameState.archiveUnlocked = true;
+                    if (this.currentMusic) this.currentMusic.stop();
+                    this.time.delayedCall(1000, () => {
+                        this.uiElement.style.display = 'none';
+                        this.uiElement.innerHTML = '';
+                        this.scene.start('EndingScene', { result: 'win' });
+                    });
+                } else {
+                    this.showText("Ошибка доступа. Пароль неверный.");
+                }
+            } else {
+                this.showText("Система уже разблокирована.");
+            }
+        }
+        else if (type === 'lab_table') {
+            let rIdx = this.gameState.inventory.indexOf('r');
+            let bIdx = this.gameState.inventory.indexOf('b');
+
+            if (rIdx !== -1 && bIdx !== -1) {
+                let mix = prompt("Смешать Красный и Синий? (ДА/НЕТ)");
+                if (mix && mix.toUpperCase() === "ДА") {
+                    this.showText("Получен Фиолетовый Растворитель!");
+                    this.gameState.solventReady = true;
+                    this.removeFromInventory('r');
+                    this.removeFromInventory('b');
+                }
+            } else {
+                this.showText("Химическая станция. Нужны красный и синий реагенты.");
+            }
+        }
+        else if (type && type.startsWith('reagent_')) {
+            const color = type.split('_')[1];
+            this.showText(`Подобран реагент. Тяжелое стекло.`);
+            this.addToInventory('reagent_bottle'); 
+            let slotIndex = this.gameState.inventory.lastIndexOf('reagent_bottle');
+            if (slotIndex !== -1) {
+                this.gameState.inventory[slotIndex] = color;
+            }
+            obj.destroy();
+        }
+        else if (obj.texture.key === 'wardrobe') {
+            this.showText("В шкафу лежит помятый листок: 'Ящик -> Стеллаж -> Кулер -> Счетчик'");
+            this.gameState.foundNote = true;
+        }
+        else if (type === 'crate_trap') {
+            this.showText("Ящик заминирован! Сработал охранный разряд!");
+            this.cameras.main.shake(300, 0.01);
+            this.gameState.playerSpeed = 100; 
+            this.time.delayedCall(4000, () => this.gameState.playerSpeed = 300);
+            this.takeDamage();
+        }
+        else if (DESCRIPTIONS[type]) {
+            this.showText(DESCRIPTIONS[type]);
+        }
+        else {
+            if (type && type !== 'crate_empty' && type !== 'crate_battery') {
+                this.showText("Вы осмотрели предмет, но ничего не нашли.");
+            }
+        }
+    }
+
+    update(time, delta) {
+        // ТРЕВОГА И ТАЙМЕР
+        if (this.gameState.alarmActive) {
+            if (this.gameState.timer > 0) {
+                this.gameState.timer -= (delta / 1000);
+                
+                let mins = Math.floor(this.gameState.timer / 60);
+                let secs = Math.floor(Math.max(0, this.gameState.timer % 60));
+                
+                this.timerText.setText(`КРИТИЧЕСКИЙ ВЫХОД: ${mins}:${secs < 10 ? '0' : ''}${secs}`);
+                this.timerText.setVisible(true);
+
+                let pulse = Math.sin(time * 0.015) + Math.sin(time * 0.005);
+                
+                if (pulse > 0.5) {
+                    this.alarmOverlay.setAlpha(0.4);
+                } else if (pulse > 0) {
+                    this.alarmOverlay.setAlpha(0.15);
+                } else {
+                    this.alarmOverlay.setAlpha(0);
+                }
+            } else {
+                this.gameState.alarmActive = false;
+                if (this.currentMusic) this.currentMusic.stop();
+                this.time.delayedCall(500, () => {
+                    this.uiElement.style.display = 'none';
+                    this.uiElement.innerHTML = '';
+                    this.scene.start('EndingScene', { result: 'lose' });
+                });
+            }
+        } else {
+            if (this.timerText) this.timerText.setVisible(false);
+            this.alarmOverlay.setAlpha(0);
+        }
+
+        let isMoving = false;
+
+        // ДВИЖЕНИЕ + АНИМАЦИЯ (без скольжения)
+        let vx = 0;
+        let vy = 0;
+
+        if (this.cursors.left.isDown) vx = -1;
+        else if (this.cursors.right.isDown) vx = 1;
+
+        if (this.cursors.up.isDown) vy = -1;
+        else if (this.cursors.down.isDown) vy = 1;
+
+        if (vx !== 0 || vy !== 0) {
+            const len = Math.hypot(vx, vy);
+            vx = vx / len;
+            vy = vy / len;
+            
+            this.player.setVelocityX(vx * this.gameState.playerSpeed);
+            this.player.setVelocityY(vy * this.gameState.playerSpeed);
+            this.player.setDepth(this.player.y + 20);
+            
+            if (vx < 0) this.player.anims.play('walk-left', true);
+            else if (vx > 0) this.player.anims.play('walk-right', true);
+            else if (vy < 0) this.player.anims.play('walk-up', true);
+            else if (vy > 0) this.player.anims.play('walk-down', true);
+            isMoving = true;
+        } else {
+            this.player.setVelocity(0);
+            const currentAnim = this.player.anims.currentAnim?.key;
+            if (currentAnim === 'walk-down') this.player.anims.play('idle-down');
+            else if (currentAnim === 'walk-left') this.player.anims.play('idle-left');
+            else if (currentAnim === 'walk-right') this.player.anims.play('idle-right');
+            else if (currentAnim === 'walk-up') this.player.anims.play('idle-up');
+        }
+
+        let near = null;
+        this.interactables.forEach(obj => {
+            if (obj && obj.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, obj.x, obj.y) < 70) {
+                near = obj;
+            }
+        });
+
+        if (near) {
+            this.interactKeyHint.setPosition(near.x, near.y - 40).setVisible(true);
+            if (Phaser.Input.Keyboard.JustDown(this.keyE)) {
+                this.input.keyboard.resetKeys(); 
+                this.handleInteraction(near);
+            }
+        } else {
+            this.interactKeyHint.setVisible(false);
+        }
+    }
+
+    takeDamage() {
+        if (this.gameState.hp > 0) {
+            this.gameState.hp--;
+            let heartToChange = this.gameState.hearts[this.gameState.hp];
+            if (heartToChange) {
+                heartToChange.setTexture('heart_grey');
+            }
+            this.cameras.main.shake(300, 0.02);
+            this.showText("ПОЛУЧЕН УРОН!");
+            if (this.gameState.hp <= 0) {
+                this.showText("ВЫ ПОГИБЛИ. Перезагрузка...");
+                if (this.currentMusic) this.currentMusic.stop();
+                this.time.delayedCall(2000, () => {
+                    this.uiElement.style.display = 'none';
+                    this.uiElement.innerHTML = '';
+                    this.scene.restart();
+                });
+            }
+        }
+    }
+
+    addToInventory(itemKey) {
+        let slotIndex = this.gameState.inventory.findIndex(slot => slot === null);
+        if (slotIndex !== -1) {
+            this.gameState.inventory[slotIndex] = itemKey;
+            const startX = this.scale.width / 2 - 90;
+            const invY = this.scale.height - 150;
+            let icon = this.add.image(startX + (slotIndex * 60), invY, itemKey)
+                .setScrollFactor(0)
+                .setDepth(10001) 
+                .setScale(1.2);
+            this.gameState.invVisuals[slotIndex] = icon;
+        }
+    }
+}
+
+new Phaser.Game({
+    type: Phaser.AUTO, width: window.innerWidth, height: window.innerHeight,
+    pixelArt: true, roundPixels: true,
+    physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
+    scene: [MenuScene, IntroCutscene, MainScene, EndingScene]
+});
+</script>
+</body>
+</html>
